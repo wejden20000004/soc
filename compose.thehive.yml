@@ -1,0 +1,36 @@
+# Phase 4 — TheHive. See "Phase 4" in soc-in-a-box-docker-migration-plan-windows.md.
+#
+# TODO: not yet fleshed out. The plan says to copy this in from the old Ubuntu VM's
+# docker-compose file, pin versions, attach everything to soc-backend, and drop direct
+# published ports (Traefik proxies it instead). Optionally add Cortex here too.
+services:
+  thehive:
+    image: TODO
+    networks: [soc-backend]
+
+  cassandra:
+    image: TODO
+    volumes: [thehive_cassandra_data:/var/lib/cassandra]
+    networks: [soc-backend]
+
+  es-thehive:
+    image: TODO
+    volumes: [thehive_es_data:/usr/share/elasticsearch/data]
+    networks: [soc-backend]
+
+  minio:
+    image: TODO
+    volumes: [thehive_minio_data:/data]
+    networks: [soc-backend]
+
+  # cortex:
+  #   image: TODO
+
+networks:
+  soc-backend:
+    external: true
+
+volumes:
+  thehive_cassandra_data:
+  thehive_es_data:
+  thehive_minio_data:

@@ -1,0 +1,30 @@
+# Phase 3 — MISP. See "Phase 3" in soc-in-a-box-docker-migration-plan-windows.md.
+#
+# TODO: not yet fleshed out. The plan says to reuse "misp-docker" (misp-core, mariadb,
+# redis, misp-modules), all on the soc-backend network, MariaDB on a named volume.
+# Pull the actual service defs from the misp-docker project (github.com/MISP/misp-docker)
+# and pin image versions before use.
+services:
+  misp-core:
+    image: TODO
+    networks: [soc-backend]
+
+  mariadb:
+    image: TODO
+    volumes: [misp_mariadb_data:/var/lib/mysql]
+    networks: [soc-backend]
+
+  redis:
+    image: TODO
+    networks: [soc-backend]
+
+  misp-modules:
+    image: TODO
+    networks: [soc-backend]
+
+networks:
+  soc-backend:
+    external: true
+
+volumes:
+  misp_mariadb_data:
