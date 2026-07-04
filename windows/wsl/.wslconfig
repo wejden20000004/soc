@@ -1,0 +1,5 @@
+[wsl2]
+memory=10GB
+processors=6
+swap=4GB
+kernelCommandLine = "sysctl.vm.max_map_count=262144"
