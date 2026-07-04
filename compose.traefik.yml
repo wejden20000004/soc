@@ -1,0 +1,26 @@
+# Phase 5 — reverse proxy + secrets. See "Phase 5" in soc-in-a-box-docker-migration-plan-windows.md.
+#
+# TODO: generate a self-signed wildcard cert for *.soc.local into traefik/certs/
+# before bringing this up (see traefik/certs/README.md), and confirm nothing else
+# on the Windows host holds 443 (netstat -ano | findstr :443).
+services:
+  traefik:
+    image: traefik:v3.1
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --entrypoints.websecure.address=:443
+    ports:
+      - "443:443"
+    volumes:
+      - //./pipe/docker_engine:/var/run/docker.sock:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./traefik/certs:/etc/traefik/certs:ro
+    networks: [soc-backend]
+    mem_limit: 256m
+
+networks:
+  soc-backend:
+    external: true

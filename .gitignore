@@ -1,0 +1,6 @@
+.env
+*.log
+windows/suricata/log/
+traefik/certs/*.pem
+traefik/certs/*.key
+traefik/certs/*.crt

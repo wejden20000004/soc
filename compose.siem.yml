@@ -1,0 +1,36 @@
+# Phase 2a — containerized analytics. See "Phase 2" in soc-in-a-box-docker-migration-plan-windows.md.
+# Native Suricata + Filebeat (windows/) ship into logstash on port 5044; do not containerize sniffing.
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.18.0
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms4g -Xmx4g
+      - ELASTIC_PASSWORD=${ES_PASSWORD}
+    volumes: [es_siem_data:/usr/share/elasticsearch/data]   # named volume!
+    networks: [soc-backend]
+    mem_limit: 6g
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.18.0
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+    ports: ["5044:5044"]     # Beats input — native Suricata shipper + endpoint agents
+    networks: [soc-backend]
+    mem_limit: 1500m
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.18.0
+    networks: [soc-backend]
+
+  fleet-server:
+    image: docker.elastic.co/elastic-agent/elastic-agent:8.18.0
+    ports: ["8220:8220"]     # published so the Windows 10 VM can enroll via host IP
+    networks: [soc-backend]
+
+networks:
+  soc-backend:
+    external: true
+
+volumes:
+  es_siem_data:

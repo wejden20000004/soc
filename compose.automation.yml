@@ -1,0 +1,29 @@
+# Phase 1 — n8n + Ollama. See "Phase 1" in soc-in-a-box-docker-migration-plan-windows.md.
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    restart: unless-stopped
+    environment:
+      - GENERIC_TIMEZONE=Africa/Tunis
+      - WEBHOOK_URL=https://n8n.soc.local/
+    volumes: [n8n_data:/home/node/.n8n]
+    networks: [soc-backend]
+    mem_limit: 768m
+
+  ollama:
+    image: ollama/ollama
+    restart: unless-stopped
+    volumes: [ollama_models:/root/.ollama]
+    networks: [soc-backend]
+    mem_limit: 5g
+    # NVIDIA GPU passthrough works well on Docker Desktop/WSL2:
+    # deploy: { resources: { reservations: { devices:
+    #   [{ driver: nvidia, count: all, capabilities: [gpu] }] } } }
+
+networks:
+  soc-backend:
+    external: true
+
+volumes:
+  n8n_data:
+  ollama_models:

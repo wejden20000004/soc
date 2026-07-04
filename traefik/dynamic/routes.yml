@@ -1,0 +1,20 @@
+# TODO: TLS + router config for kibana/misp/hive/n8n.soc.local.
+# Example shape (fill in once service names/ports are final):
+#
+# tls:
+#   certificates:
+#     - certFile: /etc/traefik/certs/soc-local.crt
+#       keyFile: /etc/traefik/certs/soc-local.key
+#
+# http:
+#   routers:
+#     kibana:
+#       rule: "Host(`kibana.soc.local`)"
+#       service: kibana
+#       entryPoints: [websecure]
+#       tls: {}
+#   services:
+#     kibana:
+#       loadBalancer:
+#         servers:
+#           - url: "http://kibana:5601"
