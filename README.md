@@ -13,15 +13,15 @@ its log shipper (Filebeat) run natively on Windows. Full rationale and phase-by-
 
 - **Docker Desktop** with the WSL2 backend.
 - **`%UserProfile%\.wslconfig`** with explicit memory/processors/swap and the
-  `vm.max_map_count` sysctl, or Elasticsearch will crash-loop on every reboot:
-  ```ini
-  [wsl2]
-  memory=22GB
-  processors=6
-  swap=8GB
-  kernelCommandLine = "sysctl.vm.max_map_count=262144"
+  `vm.max_map_count` sysctl, or Elasticsearch will crash-loop on every reboot. A checked-in
+  copy lives at [windows/wsl/.wslconfig](windows/wsl/.wslconfig) (tuned for a 16GB host — see
+  [windows/wsl/README.md](windows/wsl/README.md) before copying it to a different-sized
+  machine):
+  ```powershell
+  Copy-Item windows\wsl\.wslconfig $env:UserProfile\.wslconfig
+  wsl --shutdown
   ```
-  Then `wsl --shutdown` and restart Docker Desktop.
+  Then restart Docker Desktop.
 - **Npcap** + **Suricata for Windows** (MSI) + **Filebeat for Windows** installed natively —
   these are not containers (see Phase 2b in the plan doc for why).
 - **Hosts file** (`C:\Windows\System32\drivers\etc\hosts`):
