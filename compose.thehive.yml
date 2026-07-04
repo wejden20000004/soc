@@ -1,30 +1,108 @@
 # Phase 4 — TheHive. See "Phase 4" in soc-in-a-box-docker-migration-plan-windows.md.
+# StrangeBee reference layout: TheHive 5 + Cassandra (data) + Elasticsearch 7.17
+# (index) + MinIO (file storage). All databases on named volumes (CLAUDE.md rule).
 #
-# TODO: not yet fleshed out. The plan says to copy this in from the old Ubuntu VM's
-# docker-compose file, pin versions, attach everything to soc-backend, and drop direct
-# published ports (Traefik proxies it instead). Optionally add Cortex here too.
+# Data migration from the old Ubuntu VM: restore the tar'd volumes into
+# thehive_cassandra_data / thehive_es_data / thehive_minio_data BEFORE first start,
+# or skip and start clean (report test tickets are trivially re-creatable).
+
 services:
   thehive:
-    image: TODO
+    image: strangebee/thehive:5.4
+    restart: unless-stopped
+    depends_on:
+      cassandra:
+        condition: service_started
+      es-thehive:
+        condition: service_healthy
+      minio-setup:
+        condition: service_completed_successfully
+    command:
+      - --secret
+      - ${THEHIVE_SECRET}
+      - --cql-hostnames
+      - cassandra
+      - --index-backend
+      - elasticsearch
+      - --es-hostnames
+      - es-thehive
+      - --s3-endpoint
+      - http://minio:9000
+      - --s3-access-key
+      - ${MINIO_ROOT_USER}
+      - --s3-secret-key
+      - ${MINIO_ROOT_PASSWORD}
+      - --s3-bucket
+      - thehive
+      - --s3-use-path-access-style
+    # No published ports: Traefik routes https://hive.soc.local -> http://thehive:9000
     networks: [soc-backend]
+    mem_limit: 2g
 
   cassandra:
-    image: TODO
-    volumes: [thehive_cassandra_data:/var/lib/cassandra]
+    image: cassandra:4.1
+    restart: unless-stopped
+    environment:
+      - CASSANDRA_CLUSTER_NAME=thehive
+      - MAX_HEAP_SIZE=1024M
+      - HEAP_NEWSIZE=256M
+    volumes: [thehive_cassandra_data:/var/lib/cassandra]   # named volume!
     networks: [soc-backend]
+    mem_limit: 2g
 
   es-thehive:
-    image: TODO
-    volumes: [thehive_es_data:/usr/share/elasticsearch/data]
+    # TheHive 5 indexes against ES 7.17 — deliberately a separate instance from the
+    # SIEM's ES 8.x (version + index isolation).
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.24
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    volumes: [thehive_es_data:/usr/share/elasticsearch/data]   # named volume!
     networks: [soc-backend]
+    mem_limit: 1500m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 45s
 
   minio:
-    image: TODO
-    volumes: [thehive_minio_data:/data]
+    image: quay.io/minio/minio:latest   # pin to digest after first pull (CLAUDE.md rule)
+    restart: unless-stopped
+    command: server /data
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    volumes: [thehive_minio_data:/data]   # named volume!
+    networks: [soc-backend]
+    mem_limit: 512m
+
+  # One-shot: create the 'thehive' bucket so TheHive's S3 storage works on first boot.
+  minio-setup:
+    image: quay.io/minio/mc:latest
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      sh -c '
+        until mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do sleep 3; done;
+        mc mb --ignore-existing local/thehive
+      '
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
     networks: [soc-backend]
 
+  # Optional next step (SOAR perspective from the report): Cortex analyzers/responders.
   # cortex:
-  #   image: TODO
+  #   image: thehiveproject/cortex:3.1.8
+  #   restart: unless-stopped
+  #   environment: [job_directory=/tmp/cortex-jobs]
+  #   networks: [soc-backend]
 
 networks:
   soc-backend:

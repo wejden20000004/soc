@@ -5,6 +5,11 @@ services:
     restart: unless-stopped
     environment:
       - GENERIC_TIMEZONE=Africa/Tunis
+      # Behind Traefik (TLS terminated upstream) — these keep editor URLs, webhook
+      # URLs and secure cookies consistent with https://n8n.soc.local:
+      - N8N_HOST=n8n.soc.local
+      - N8N_PROTOCOL=https
+      - N8N_PROXY_HOPS=1
       - WEBHOOK_URL=https://n8n.soc.local/
     volumes: [n8n_data:/home/node/.n8n]
     networks: [soc-backend]
@@ -16,6 +21,9 @@ services:
     volumes: [ollama_models:/root/.ollama]
     networks: [soc-backend]
     mem_limit: 5g
+    # On the 16GB host sizing (windows/wsl/.wslconfig), prefer running Ollama
+    # NATIVELY on Windows instead and point n8n at http://host.docker.internal:11434
+    # — comment this service out in that case.
     # NVIDIA GPU passthrough works well on Docker Desktop/WSL2:
     # deploy: { resources: { reservations: { devices:
     #   [{ driver: nvidia, count: all, capabilities: [gpu] }] } } }

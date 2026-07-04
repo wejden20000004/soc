@@ -1,0 +1,25 @@
+# Native Windows Filebeat config (Phase 2b reference — the live copy runs from the
+# Filebeat install directory on the host).
+#
+# Deliberately a PLAIN filestream input, not the Suricata module: the module's
+# parsing depends on ES ingest pipelines that only install when Filebeat outputs to
+# Elasticsearch directly. Since we ship to Logstash, all eve.json parsing happens in
+# logstash/pipeline/suricata.conf instead. Do not enable the module here.
+
+filebeat.inputs:
+  - type: filestream
+    id: suricata-eve
+    enabled: true
+    paths:
+      - 'C:\Program Files\Suricata\log\eve.json'
+
+output.logstash:
+  # Logstash's 5044 is published by compose.siem.yml on the Windows host.
+  hosts: ["localhost:5044"]
+
+# Keep Filebeat's own noise down.
+logging.level: warning
+logging.to_files: true
+logging.files:
+  path: 'C:\ProgramData\filebeat\logs'
+  keepfiles: 3

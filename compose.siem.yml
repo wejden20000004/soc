@@ -1,32 +1,121 @@
 # Phase 2a — containerized analytics. See "Phase 2" in soc-in-a-box-docker-migration-plan-windows.md.
 # Native Suricata + Filebeat (windows/) ship into logstash on port 5044; do not containerize sniffing.
+#
+# TLS decision (lab): ES security is ON (passwords enforced) but HTTP TLS is OFF, so
+# in-cluster clients (Kibana, Logstash, Fleet) talk plain http on the isolated
+# soc-backend network. Production would enable xpack.security.http.ssl + CA mounts.
+#
+# Heap/limits default to the 16GB-host sizing from windows/wsl/README.md; override
+# ES_HEAP / ES_MEM_LIMIT in .env on a 32GB host (e.g. "-Xms4g -Xmx4g" / 6g).
+
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.18.0
+    restart: unless-stopped
     environment:
       - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms4g -Xmx4g
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
       - ELASTIC_PASSWORD=${ES_PASSWORD}
+      - ES_JAVA_OPTS=${ES_HEAP:--Xms2g -Xmx2g}
     volumes: [es_siem_data:/usr/share/elasticsearch/data]   # named volume!
     networks: [soc-backend]
-    mem_limit: 6g
+    mem_limit: ${ES_MEM_LIMIT:-4g}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -u elastic:${ES_PASSWORD} http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
 
-  logstash:
-    image: docker.elastic.co/logstash/logstash:8.18.0
-    volumes:
-      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
-    ports: ["5044:5044"]     # Beats input — native Suricata shipper + endpoint agents
+  # One-shot: sets the kibana_system password (Kibana is NOT allowed to log in as
+  # 'elastic' in 8.x). Runs once, exits 0, Kibana waits on its completion.
+  kibana-setup:
+    image: curlimages/curl:8.10.1
+    restart: "no"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ES_PASSWORD=${ES_PASSWORD}
+      - KIBANA_PASSWORD=${KIBANA_PASSWORD}
+    command: >
+      sh -c '
+        curl -sf -X POST -u "elastic:$${ES_PASSWORD}"
+             -H "Content-Type: application/json"
+             http://elasticsearch:9200/_security/user/kibana_system/_password
+             -d "{\"password\":\"$${KIBANA_PASSWORD}\"}"
+      '
     networks: [soc-backend]
-    mem_limit: 1500m
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.18.0
+    restart: unless-stopped
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      kibana-setup:
+        condition: service_completed_successfully
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
+      - SERVER_PUBLICBASEURL=https://kibana.soc.local
+      # Required by Fleet — any random 32+ char string, set in .env:
+      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=${KIBANA_ENCRYPTION_KEY}
+      # The URL handed to enrolling agents. Must be reachable from the endpoint VM,
+      # hence the host LAN IP, not a container name:
+      - XPACK_FLEET_AGENTS_FLEET_SERVER_HOSTS=["http://${HOST_LAN_IP}:8220"]
     networks: [soc-backend]
+    mem_limit: 1500m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:5601/api/status | grep -q '\"level\":\"available\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.18.0
+    restart: unless-stopped
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      # The pipeline's ${ES_PASSWORD} resolves from the CONTAINER env — this line
+      # is what actually delivers it (compose-file interpolation alone is not enough):
+      - ES_PASSWORD=${ES_PASSWORD}
+      - LS_JAVA_OPTS=-Xms512m -Xmx1g
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+    ports: ["5044:5044"]     # Beats input — native Filebeat (Suricata) ships here
+    networks: [soc-backend]
+    mem_limit: 1500m
 
   fleet-server:
     image: docker.elastic.co/elastic-agent/elastic-agent:8.18.0
+    restart: unless-stopped
+    depends_on:
+      kibana:
+        condition: service_healthy
+    environment:
+      # Bootstrap pattern: the agent asks Kibana to initialize Fleet and mint its
+      # own service token, then starts serving as the Fleet server.
+      - FLEET_SERVER_ENABLE=1
+      - FLEET_SERVER_ELASTICSEARCH_HOST=http://elasticsearch:9200
+      - FLEET_SERVER_HOST=0.0.0.0
+      - FLEET_SERVER_PORT=8220
+      # Lab-only: plain HTTP on 8220 (endpoint enrolls with http:// + --insecure).
+      # Production: replace with FLEET_SERVER_CERT / FLEET_SERVER_CERT_KEY mounts.
+      - FLEET_SERVER_INSECURE_HTTP=1
+      - KIBANA_FLEET_SETUP=1
+      - KIBANA_HOST=http://kibana:5601
+      - KIBANA_USERNAME=elastic
+      - KIBANA_PASSWORD=${ES_PASSWORD}
     ports: ["8220:8220"]     # published so the Windows 10 VM can enroll via host IP
     networks: [soc-backend]
+    mem_limit: 1g
 
 networks:
   soc-backend:

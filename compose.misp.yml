@@ -1,26 +1,71 @@
 # Phase 3 — MISP. See "Phase 3" in soc-in-a-box-docker-migration-plan-windows.md.
+# Based on the upstream misp-docker layout (github.com/MISP/misp-docker).
 #
-# TODO: not yet fleshed out. The plan says to reuse "misp-docker" (misp-core, mariadb,
-# redis, misp-modules), all on the soc-backend network, MariaDB on a named volume.
-# Pull the actual service defs from the misp-docker project (github.com/MISP/misp-docker)
-# and pin image versions before use.
+# Version pinning: 'latest' is used for first bring-up; after the first successful
+# start, pin to the pulled digest:
+#   docker inspect --format '{{index .RepoDigests 0}}' <container>
+# and replace the image line with image@sha256:... (per CLAUDE.md rule).
+
 services:
   misp-core:
-    image: TODO
+    image: ghcr.io/misp/misp-docker/misp-core:latest
+    restart: unless-stopped
+    depends_on:
+      misp-db:
+        condition: service_healthy
+      misp-redis:
+        condition: service_started
+    environment:
+      - BASE_URL=https://misp.soc.local
+      - ADMIN_EMAIL=${MISP_ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${MISP_ADMIN_PASSWORD}
+      - MYSQL_HOST=misp-db
+      - MYSQL_DATABASE=misp
+      - MYSQL_USER=misp
+      - MYSQL_PASSWORD=${MISP_MYSQL_PASSWORD}
+      - REDIS_FQDN=misp-redis
+      # Traefik terminates TLS and forwards plain HTTP to port 80 — stop MISP's
+      # own nginx from bouncing that to :443 inside the container:
+      - DISABLE_SSL_REDIRECT=true
+    # No published ports: Traefik routes https://misp.soc.local -> http://misp-core:80
+    volumes:
+      - misp_configs:/var/www/MISP/app/Config
+      - misp_files:/var/www/MISP/app/files
+      - misp_logs:/var/www/MISP/app/tmp/logs
+      - misp_gnupg:/var/www/MISP/.gnupg
     networks: [soc-backend]
-
-  mariadb:
-    image: TODO
-    volumes: [misp_mariadb_data:/var/lib/mysql]
-    networks: [soc-backend]
-
-  redis:
-    image: TODO
-    networks: [soc-backend]
+    mem_limit: 2500m
 
   misp-modules:
-    image: TODO
+    image: ghcr.io/misp/misp-docker/misp-modules:latest
+    restart: unless-stopped
+    environment:
+      - REDIS_BACKEND=misp-redis
     networks: [soc-backend]
+    mem_limit: 512m
+
+  misp-db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MISP_MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=misp
+      - MYSQL_USER=misp
+      - MYSQL_PASSWORD=${MISP_MYSQL_PASSWORD}
+    volumes: [misp_mariadb_data:/var/lib/mysql]   # named volume!
+    networks: [soc-backend]
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  misp-redis:
+    image: redis:7
+    restart: unless-stopped
+    networks: [soc-backend]
+    mem_limit: 256m
 
 networks:
   soc-backend:
@@ -28,3 +73,7 @@ networks:
 
 volumes:
   misp_mariadb_data:
+  misp_configs:
+  misp_files:
+  misp_logs:
+  misp_gnupg:

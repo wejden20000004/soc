@@ -1,20 +1,50 @@
-# TODO: TLS + router config for kibana/misp/hive/n8n.soc.local.
-# Example shape (fill in once service names/ports are final):
-#
-# tls:
-#   certificates:
-#     - certFile: /etc/traefik/certs/soc-local.crt
-#       keyFile: /etc/traefik/certs/soc-local.key
-#
-# http:
-#   routers:
-#     kibana:
-#       rule: "Host(`kibana.soc.local`)"
-#       service: kibana
-#       entryPoints: [websecure]
-#       tls: {}
-#   services:
-#     kibana:
-#       loadBalancer:
-#         servers:
-#           - url: "http://kibana:5601"
+# Traefik dynamic config: TLS + routers for the four SOC UIs.
+# Hostnames must be in the Windows hosts file (127.0.0.1 -> *.soc.local).
+# Every target is a Docker service name on soc-backend — Traefik terminates TLS,
+# backends speak plain HTTP inside the network.
+
+tls:
+  certificates:
+    - certFile: /etc/traefik/certs/soc-local.crt
+      keyFile: /etc/traefik/certs/soc-local.key
+
+http:
+  routers:
+    kibana:
+      rule: "Host(`kibana.soc.local`)"
+      service: kibana
+      entryPoints: [websecure]
+      tls: {}
+    misp:
+      rule: "Host(`misp.soc.local`)"
+      service: misp
+      entryPoints: [websecure]
+      tls: {}
+    thehive:
+      rule: "Host(`hive.soc.local`)"
+      service: thehive
+      entryPoints: [websecure]
+      tls: {}
+    n8n:
+      rule: "Host(`n8n.soc.local`)"
+      service: n8n
+      entryPoints: [websecure]
+      tls: {}
+
+  services:
+    kibana:
+      loadBalancer:
+        servers:
+          - url: "http://kibana:5601"
+    misp:
+      loadBalancer:
+        servers:
+          - url: "http://misp-core:80"
+    thehive:
+      loadBalancer:
+        servers:
+          - url: "http://thehive:9000"
+    n8n:
+      loadBalancer:
+        servers:
+          - url: "http://n8n:5678"
