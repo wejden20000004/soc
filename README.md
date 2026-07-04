@@ -5,6 +5,8 @@ host: everything containerizable lives in Docker Desktop, network sniffing (Suri
 its log shipper (Filebeat) run natively on Windows. Full rationale and phase-by-phase plan:
 [soc-in-a-box-docker-migration-plan-windows.md](soc-in-a-box-docker-migration-plan-windows.md).
 
+![Architecture diagram](docs/architecture.svg)
+
 > **Status:** `compose.automation.yml` and `compose.siem.yml` are complete. `compose.misp.yml`,
 > `compose.thehive.yml`, `compose.traefik.yml`, the Logstash pipeline, and the Traefik dynamic
 > config are stubs (`TODO`) — see [CLAUDE.md](CLAUDE.md) for what's implemented vs. placeholder.
